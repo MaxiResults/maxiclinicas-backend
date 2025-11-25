@@ -9,14 +9,22 @@ const allowedOrigins = [
   'https://maxiclinicas.com.br',
   'http://www.maxiclinicas.com.br',
   'https://www.maxiclinicas.com.br',
-  'http://localhost:3000', // Desenvolvimento local
-  'http://localhost:5173', // Vite dev
+  'http://localhost:3000',
+  'http://localhost:5173',
 ];
 
 export const corsMiddleware = cors({
   origin: (origin, callback) => {
     // Permitir requisições sem origin (ex: Postman, curl)
     if (!origin) {
+      return callback(null, true);
+    }
+
+    // Permitir todos os domínios lovable.app e lovable.dev
+    if (
+      origin.includes('lovable.app') || 
+      origin.includes('lovable.dev')
+    ) {
       return callback(null, true);
     }
 
