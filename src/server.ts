@@ -9,6 +9,7 @@ import morgan from 'morgan';
 import { testConnection } from './config/supabase';
 import { logger, morganStream } from './utils/logger';
 import { errorHandler } from './middlewares/errorHandler.middleware';
+import { corsMiddleware } from './middlewares/cors.middleware';
 
 // Importar rotas
 import webhooksRoutes from './routes/webhooks.routes';
@@ -30,10 +31,18 @@ app.use(cors({
   origin: '*',
   credentials: false
 }));
+app.use(corsMiddleware);
 app.use(compression());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('combined', { stream: morganStream }));
+
+// Body parser
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Compression
+app.use(compression());
 
 
 // Rota raiz
