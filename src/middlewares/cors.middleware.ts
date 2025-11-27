@@ -24,6 +24,7 @@ export const corsMiddleware = cors({
     if (
       origin.includes('lovable.app') || 
       origin.includes('lovable.dev')
+  origin.includes('lovableproject.com') 
     ) {
       return callback(null, true);
     }
