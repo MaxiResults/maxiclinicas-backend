@@ -1,344 +1,228 @@
 import { supabase } from '../config/supabase';
-import { ConversaSessao, ConversaHistorico, ApiResponse } from '../types';
-import { logger } from '../utils/logger';
+import axios from 'axios';
+
+interface Sessao {
+  id: string;
+  whatsapp_id: string;
+  lead_id?: string;
+  canal: string;
+  status_sessao: string;
+  profissional_responsavel_id?: string;
+  tipo_atendimento_atual: string;
+  ultima_interacao: string;
+  total_mensagens: number;
+  created_at: string;
+}
+
+interface Mensagem {
+  id: string;
+  sessao_id: string;
+  remetente: string;
+  tipo_mensagem: string;
+  mensagem: string;
+  message_id?: string;
+  data_envio: string;
+  status_entrega: string;
+  midia_url?: string;
+  midia_tipo?: string;
+}
 
 export class ConversasService {
   /**
-   * Buscar ou criar sessão de conversa ativa
+   * Listar sessões de conversa
    */
-  async buscarOuCriarSessao(data: {
-    leadId: string;
-    clienteId: number;
-    empresaId: number;
-    whatsappId?: string;
-    instanciaId?: string;
-  }): Promise<ApiResponse<{ sessaoId: string; isNew: boolean }>> {
+  async listarSessoes(filters: {
+    status?: string;
+    profissional_id?: string;
+    cliente_id: number;
+    empresa_id: number;
+  }): Promise<Sessao[]> {
     try {
-      logger.info('Buscando ou criando sessão de conversa', { leadId: data.leadId });
-
-      // Verificar se existe sessão ativa
-      const { data: sessaoAtiva, error: searchError } = await supabase
+      let query = supabase
         .from('Conversas_Sessoes')
-        .select('*')
-        .eq('lead_id', data.leadId)
-        .eq('Cliente_ID', data.clienteId)
-        .eq('Empresa_ID', data.empresaId)
-        .eq('status_sessao', 'ativa')
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        .select(`
+          *,
+          ultima_mensagem:Conversas_Historico(mensagem, data_envio)
+        `)
+        .eq('Cliente_ID', filters.cliente_id)
+        .eq('Empresa_ID', filters.empresa_id)
+        .order('ultima_interacao', { ascending: false })
+        .limit(1, { foreignTable: 'Conversas_Historico' });
 
-      if (searchError) {
-        logger.error('Erro ao buscar sessão ativa', searchError);
-        return {
-          success: false,
-          error: searchError.message
-        };
+      // Filtros opcionais
+      if (filters.status) {
+        query = query.eq('status_sessao', filters.status);
       }
 
-      // Se existe sessão ativa, atualiza última interação
-      if (sessaoAtiva) {
-        const { error: updateError } = await supabase
-          .from('Conversas_Sessoes')
-          .update({
-            ultima_interacao: new Date().toISOString(),
-            total_mensagens: (sessaoAtiva.total_mensagens || 0) + 1
-          })
-          .eq('id', sessaoAtiva.id);
-
-        if (updateError) {
-          logger.error('Erro ao atualizar sessão', updateError);
-        }
-
-        logger.info('Sessão ativa encontrada', { sessaoId: sessaoAtiva.id });
-
-        return {
-          success: true,
-          data: {
-            sessaoId: sessaoAtiva.id,
-            isNew: false
-          }
-        };
+      if (filters.profissional_id) {
+        query = query.eq('profissional_responsavel_id', filters.profissional_id);
       }
 
-      // Criar nova sessão
-      const novaSessao = {
-        Cliente_ID: data.clienteId,
-        Empresa_ID: data.empresaId,
-        lead_id: data.leadId,
-        instancia_id: data.instanciaId && this.isValidUUID(data.instanciaId) ? data.instanciaId : null,  // ← CORRIGIDO!
-        whatsapp_id: data.whatsappId,
-        canal: 'whatsapp',
-        status_sessao: 'ativa',
-        data_inicio: new Date().toISOString(),
-        ultima_interacao: new Date().toISOString(),
-        total_mensagens: 1,
-        tipo_atendimento: 'automatico'
-      };
-
-      const { data: novaSessaoData, error: insertError } = await supabase
-        .from('Conversas_Sessoes')
-        .insert(novaSessao)
-        .select()
-        .single();
-
-      if (insertError) {
-        logger.error('Erro ao criar sessão', insertError);
-        return {
-          success: false,
-          error: insertError.message
-        };
-      }
-
-      logger.info('Nova sessão criada', { sessaoId: novaSessaoData.id });
-
-      return {
-        success: true,
-        data: {
-          sessaoId: novaSessaoData.id,
-          isNew: true
-        }
-      };
-    } catch (error: any) {
-      logger.error('Erro inesperado ao buscar/criar sessão', error);
-      return {
-        success: false,
-        error: error.message
-      };
-    }
-  }
-
-  /**
-   * Salvar mensagem no histórico
-   */
-  async salvarMensagem(data: {
-    sessaoId: string;
-    clienteId: number;
-    empresaId: number;
-    remetente: 'lead' | 'sistema' | 'atendente';
-    mensagem: string;
-    tipoMensagem?: 'texto' | 'audio' | 'imagem' | 'video' | 'documento';
-    messageId?: string;
-    instanciaId?: string;
-  }): Promise<ApiResponse<ConversaHistorico>> {
-    try {
-      const novaMensagem = {
-        sessao_id: data.sessaoId,
-        Cliente_ID: data.clienteId,
-        Empresa_ID: data.empresaId,
-        instancia_id: data.instanciaId && this.isValidUUID(data.instanciaId) ? data.instanciaId : null,  // ← CORRIGIDO!
-        remetente: data.remetente,
-        mensagem: data.mensagem,
-        tipo_mensagem: data.tipoMensagem || 'texto',
-        message_id: data.messageId,
-        status_entrega: data.remetente === 'lead' ? 'entregue' : 'enviando',
-        data_envio: new Date().toISOString()
-      };
-
-      const { data: mensagemSalva, error } = await supabase
-        .from('Conversas_Historico')
-        .insert(novaMensagem)
-        .select()
-        .single();
+      const { data, error } = await query;
 
       if (error) {
-        logger.error('Erro ao salvar mensagem', error);
-        return {
-          success: false,
-          error: error.message
-        };
+        console.error('❌ Erro ao listar sessões:', error);
+        throw new Error(`Erro ao listar sessões: ${error.message}`);
       }
 
-      logger.info('Mensagem salva', { 
-        sessaoId: data.sessaoId,
-        remetente: data.remetente 
-      });
-
-      return {
-        success: true,
-        data: mensagemSalva as ConversaHistorico
-      };
+      console.log(`✅ ${data?.length || 0} sessões encontradas`);
+      return data || [];
     } catch (error: any) {
-      logger.error('Erro inesperado ao salvar mensagem', error);
-      return {
-        success: false,
-        error: error.message
-      };
+      console.error('❌ Erro no service listarSessoes:', error);
+      throw error;
     }
   }
 
   /**
-   * Buscar histórico de mensagens de uma sessão
+   * Listar mensagens de uma sessão
    */
-  async buscarHistorico(
+  async listarMensagens(
     sessaoId: string,
-    limit: number = 50
-  ): Promise<ApiResponse<ConversaHistorico[]>> {
+    clienteId: number,
+    empresaId: number
+  ): Promise<Mensagem[]> {
     try {
       const { data, error } = await supabase
         .from('Conversas_Historico')
         .select('*')
         .eq('sessao_id', sessaoId)
-        .order('data_envio', { ascending: true })
-        .limit(limit);
+        .eq('Cliente_ID', clienteId)
+        .eq('Empresa_ID', empresaId)
+        .order('data_envio', { ascending: true });
 
       if (error) {
-        return {
-          success: false,
-          error: error.message
-        };
+        console.error('❌ Erro ao listar mensagens:', error);
+        throw new Error(`Erro ao listar mensagens: ${error.message}`);
       }
 
-      return {
-        success: true,
-        data: data as ConversaHistorico[]
-      };
+      console.log(`✅ ${data?.length || 0} mensagens encontradas`);
+      return data || [];
     } catch (error: any) {
-      return {
-        success: false,
-        error: error.message
-      };
+      console.error('❌ Erro no service listarMensagens:', error);
+      throw error;
     }
   }
 
   /**
-   * Atualizar status de entrega da mensagem
+   * Enviar mensagem via Z-API
    */
-  async atualizarStatusEntrega(
-    messageId: string,
-    status: 'enviando' | 'enviado' | 'entregue' | 'lido' | 'erro'
-  ): Promise<ApiResponse<void>> {
-    try {
-      const { error } = await supabase
-        .from('Conversas_Historico')
-        .update({ status_entrega: status })
-        .eq('message_id', messageId);
-
-      if (error) {
-        return {
-          success: false,
-          error: error.message
-        };
-      }
-
-      return { success: true };
-    } catch (error: any) {
-      return {
-        success: false,
-        error: error.message
-      };
-    }
-  }
-
-  /**
-   * Finalizar sessão
-   */
-  async finalizarSessao(sessaoId: string): Promise<ApiResponse<void>> {
-    try {
-      const { error } = await supabase
-        .from('Conversas_Sessoes')
-        .update({
-          status_sessao: 'finalizada',
-          data_fim: new Date().toISOString()
-        })
-        .eq('id', sessaoId);
-
-      if (error) {
-        return {
-          success: false,
-          error: error.message
-        };
-      }
-
-      logger.info('Sessão finalizada', { sessaoId });
-
-      return { success: true };
-    } catch (error: any) {
-      return {
-        success: false,
-        error: error.message
-      };
-    }
-  }
-
-  /**
-   * Transferir conversa para atendente
-   */
-  async transferirParaAtendente(
+  async enviarMensagem(
     sessaoId: string,
-    atendenteId: string
-  ): Promise<ApiResponse<void>> {
-    try {
-      const { error } = await supabase
-        .from('Conversas_Sessoes')
-        .update({
-          atendente_id: atendenteId,
-          tipo_atendimento: 'humano'
-        })
-        .eq('id', sessaoId);
-
-      if (error) {
-        return {
-          success: false,
-          error: error.message
-        };
-      }
-
-      logger.info('Conversa transferida para atendente', { 
-        sessaoId, 
-        atendenteId 
-      });
-
-      return { success: true };
-    } catch (error: any) {
-      return {
-        success: false,
-        error: error.message
-      };
-    }
-  }
-
-  /**
-   * Buscar sessões ativas
-   */
-  async buscarSessoesAtivas(
+    whatsappId: string,
+    texto: string,
     clienteId: number,
     empresaId: number
-  ): Promise<ApiResponse<ConversaSessao[]>> {
+  ): Promise<Mensagem> {
+    try {
+      const ZAPI_URL = process.env.ZAPI_URL;
+      const ZAPI_TOKEN = process.env.ZAPI_TOKEN;
+      const ZAPI_INSTANCE = process.env.ZAPI_INSTANCE_ID;
+
+      if (!ZAPI_URL || !ZAPI_TOKEN || !ZAPI_INSTANCE) {
+        throw new Error('Credenciais Z-API não configuradas');
+      }
+
+      console.log('📤 Enviando mensagem via Z-API...');
+      console.log('📱 Para:', whatsappId);
+      console.log('💬 Texto:', texto);
+
+      // Enviar via Z-API
+      const response = await axios.post(
+        `${ZAPI_URL}/instances/${ZAPI_INSTANCE}/send-text`,
+        {
+          phone: whatsappId,
+          message: texto,
+        },
+        {
+          headers: {
+            'Client-Token': ZAPI_TOKEN,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      console.log('✅ Z-API Response:', response.data);
+
+      const messageId = response.data?.messageId || response.data?.id;
+
+      // Salvar no banco
+      const { data, error } = await supabase
+        .from('Conversas_Historico')
+        .insert({
+          sessao_id: sessaoId,
+          Cliente_ID: clienteId,
+          Empresa_ID: empresaId,
+          remetente: 'atendente',
+          tipo_mensagem: 'text',
+          mensagem: texto,
+          message_id: messageId,
+          data_envio: new Date().toISOString(),
+          status_entrega: 'enviado',
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error('❌ Erro ao salvar mensagem:', error);
+        throw new Error(`Erro ao salvar mensagem: ${error.message}`);
+      }
+
+      // Atualizar sessão
+      await supabase
+        .from('Conversas_Sessoes')
+        .update({
+          ultima_interacao: new Date().toISOString(),
+        })
+        .eq('id', sessaoId);
+
+      console.log('✅ Mensagem salva no banco');
+      return data;
+    } catch (error: any) {
+      console.error('❌ Erro ao enviar mensagem:', error);
+      
+      // Salvar erro no banco
+      await supabase.from('Conversas_Historico').insert({
+        sessao_id: sessaoId,
+        Cliente_ID: clienteId,
+        Empresa_ID: empresaId,
+        remetente: 'atendente',
+        tipo_mensagem: 'text',
+        mensagem: texto,
+        data_envio: new Date().toISOString(),
+        status_entrega: 'erro',
+        erro_descricao: error.message,
+      });
+
+      throw error;
+    }
+  }
+
+  /**
+   * Buscar sessão por ID
+   */
+  async buscarSessao(
+    sessaoId: string,
+    clienteId: number,
+    empresaId: number
+  ): Promise<Sessao | null> {
     try {
       const { data, error } = await supabase
         .from('Conversas_Sessoes')
         .select('*')
+        .eq('id', sessaoId)
         .eq('Cliente_ID', clienteId)
         .eq('Empresa_ID', empresaId)
-        .eq('status_sessao', 'ativa')
-        .order('ultima_interacao', { ascending: false });
+        .single();
 
       if (error) {
-        return {
-          success: false,
-          error: error.message
-        };
+        console.error('❌ Erro ao buscar sessão:', error);
+        return null;
       }
 
-      return {
-        success: true,
-        data: data as ConversaSessao[]
-      };
+      return data;
     } catch (error: any) {
-      return {
-        success: false,
-        error: error.message
-      };
+      console.error('❌ Erro no service buscarSessao:', error);
+      return null;
     }
   }
-  /**
-   * Validar se string é UUID
-   */
-  private isValidUUID(str: string): boolean {
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    return uuidRegex.test(str);
-  }
 }
-
-export const conversasService = new ConversasService();

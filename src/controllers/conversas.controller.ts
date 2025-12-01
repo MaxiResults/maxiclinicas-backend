@@ -1,188 +1,154 @@
 import { Request, Response } from 'express';
-import { conversasService } from '../services/conversas.service';
-import { leadsService } from '../services/leads.service';
-import { logger } from '../utils/logger';
+import { ConversasService } from '../services/conversas.service';
+
+const conversasService = new ConversasService();
+
+// IDs padrão (temporário - até ter autenticação)
+const DEFAULT_CLIENTE_ID = 1;
+const DEFAULT_EMPRESA_ID = 1;
 
 export class ConversasController {
   /**
-   * Criar ou buscar sessão - ENDPOINT PARA N8N
-   * POST /api/v1/conversas/sessao
+   * GET /conversas
+   * Listar sessões de conversa
    */
-  async criarSessao(req: Request, res: Response) {
+  async listarSessoes(req: Request, res: Response) {
     try {
-      const clienteId = parseInt(process.env.DEFAULT_CLIENTE_ID || '1');
-      const empresaId = parseInt(process.env.DEFAULT_EMPRESA_ID || '1');
-      
-      const { lead_id, telefone, whatsapp_id, instancia_id } = req.body;
+      const { status, profissional_id } = req.query;
 
-      let leadId = lead_id;
+      console.log('📋 Listando sessões...');
+      console.log('Filtros:', { status, profissional_id });
 
-      // Se não tem lead_id, criar por telefone
-      if (!leadId && telefone) {
-        const leadResult = await leadsService.buscarOuCriarLead({
-          telefone,
-          clienteId,
-          empresaId,
-          whatsappId: whatsapp_id
-        });
-
-        if (!leadResult.success || !leadResult.data) {
-          return res.status(400).json({
-            success: false,
-            error: 'Erro ao buscar/criar lead: ' + leadResult.error
-          });
-        }
-
-        leadId = leadResult.data.leadId;
-      }
-
-      if (!leadId) {
-        return res.status(400).json({
-          success: false,
-          error: 'lead_id ou telefone é obrigatório'
-        });
-      }
-
-      const result = await conversasService.buscarOuCriarSessao({
-        leadId,
-        clienteId,
-        empresaId,
-        whatsappId: whatsapp_id,
-        instanciaId: instancia_id
+      const sessoes = await conversasService.listarSessoes({
+        status: status as string,
+        profissional_id: profissional_id as string,
+        cliente_id: DEFAULT_CLIENTE_ID,
+        empresa_id: DEFAULT_EMPRESA_ID,
       });
 
-      if (!result.success) {
-        return res.status(400).json({
-          success: false,
-          error: result.error
-        });
-      }
-
-      return res.status(200).json({
+      return res.json({
         success: true,
-        data: {
-          sessao_id: result.data?.sessaoId,
-          lead_id: leadId,
-          is_new: result.data?.isNew
-        }
+        data: sessoes,
+        total: sessoes.length,
       });
     } catch (error: any) {
-      logger.error('Erro ao criar sessão', error);
+      console.error('❌ Erro no controller listarSessoes:', error);
       return res.status(500).json({
         success: false,
-        error: error.message
+        message: 'Erro ao listar sessões',
+        error: error.message,
       });
     }
   }
 
   /**
-   * Salvar mensagem - ENDPOINT PARA N8N
-   * POST /api/v1/conversas/mensagem
+   * GET /conversas/:sessaoId/mensagens
+   * Listar mensagens de uma sessão
    */
-  async salvarMensagem(req: Request, res: Response) {
+  async listarMensagens(req: Request, res: Response) {
     try {
-      const clienteId = parseInt(process.env.DEFAULT_CLIENTE_ID || '1');
-      const empresaId = parseInt(process.env.DEFAULT_EMPRESA_ID || '1');
-      
-      const {
-        sessao_id,
-        remetente,
-        mensagem,
-        tipo_mensagem,
-        message_id,
-        instancia_id
-      } = req.body;
+      const { sessaoId } = req.params;
 
-      if (!sessao_id || !remetente || !mensagem) {
-        return res.status(400).json({
-          success: false,
-          error: 'sessao_id, remetente e mensagem são obrigatórios'
-        });
-      }
+      console.log('💬 Listando mensagens da sessão:', sessaoId);
 
-      const result = await conversasService.salvarMensagem({
-        sessaoId: sessao_id,
-        clienteId,
-        empresaId,
-        remetente,
-        mensagem,
-        tipoMensagem: tipo_mensagem,
-        messageId: message_id,
-        instanciaId: instancia_id
-      });
-
-      if (!result.success) {
-        return res.status(400).json({
-          success: false,
-          error: result.error
-        });
-      }
-
-      return res.status(201).json({
-        success: true,
-        data: result.data
-      });
-    } catch (error: any) {
-      logger.error('Erro ao salvar mensagem', error);
-      return res.status(500).json({
-        success: false,
-        error: error.message
-      });
-    }
-  }
-
-  /**
-   * Buscar histórico
-   * GET /api/v1/conversas/:leadId/historico
-   */
-  async buscarHistorico(req: Request, res: Response) {
-    try {
-      const { leadId } = req.params;
-      const { limit } = req.query;
-
-      const clienteId = parseInt(process.env.DEFAULT_CLIENTE_ID || '1');
-      const empresaId = parseInt(process.env.DEFAULT_EMPRESA_ID || '1');
-
-      const sessaoResult = await conversasService.buscarOuCriarSessao({
-        leadId,
-        clienteId,
-        empresaId
-      });
-
-      if (!sessaoResult.success || !sessaoResult.data) {
-        return res.status(404).json({
-          success: false,
-          error: 'Sessão não encontrada'
-        });
-      }
-
-      const historicoResult = await conversasService.buscarHistorico(
-        sessaoResult.data.sessaoId,
-        limit ? parseInt(limit as string) : 50
+      // Verificar se sessão existe
+      const sessao = await conversasService.buscarSessao(
+        sessaoId,
+        DEFAULT_CLIENTE_ID,
+        DEFAULT_EMPRESA_ID
       );
 
-      if (!historicoResult.success) {
-        return res.status(400).json({
+      if (!sessao) {
+        return res.status(404).json({
           success: false,
-          error: historicoResult.error
+          message: 'Sessão não encontrada',
         });
       }
 
-      return res.status(200).json({
+      const mensagens = await conversasService.listarMensagens(
+        sessaoId,
+        DEFAULT_CLIENTE_ID,
+        DEFAULT_EMPRESA_ID
+      );
+
+      return res.json({
         success: true,
-        data: {
-          sessao_id: sessaoResult.data.sessaoId,
-          mensagens: historicoResult.data
-        }
+        data: mensagens,
+        total: mensagens.length,
       });
     } catch (error: any) {
-      logger.error('Erro ao buscar histórico', error);
+      console.error('❌ Erro no controller listarMensagens:', error);
       return res.status(500).json({
         success: false,
-        error: error.message
+        message: 'Erro ao listar mensagens',
+        error: error.message,
+      });
+    }
+  }
+
+  /**
+   * POST /conversas/:sessaoId/mensagens
+   * Enviar mensagem para cliente
+   */
+  async enviarMensagem(req: Request, res: Response) {
+    try {
+      const { sessaoId } = req.params;
+      const { texto } = req.body;
+
+      console.log('📤 Enviando mensagem...');
+      console.log('Sessão:', sessaoId);
+      console.log('Texto:', texto);
+
+      // Validações
+      if (!texto || texto.trim() === '') {
+        return res.status(400).json({
+          success: false,
+          message: 'Texto da mensagem é obrigatório',
+        });
+      }
+
+      // Buscar sessão
+      const sessao = await conversasService.buscarSessao(
+        sessaoId,
+        DEFAULT_CLIENTE_ID,
+        DEFAULT_EMPRESA_ID
+      );
+
+      if (!sessao) {
+        return res.status(404).json({
+          success: false,
+          message: 'Sessão não encontrada',
+        });
+      }
+
+      if (!sessao.whatsapp_id) {
+        return res.status(400).json({
+          success: false,
+          message: 'Sessão não possui WhatsApp ID',
+        });
+      }
+
+      // Enviar mensagem
+      const mensagem = await conversasService.enviarMensagem(
+        sessaoId,
+        sessao.whatsapp_id,
+        texto,
+        DEFAULT_CLIENTE_ID,
+        DEFAULT_EMPRESA_ID
+      );
+
+      return res.json({
+        success: true,
+        data: mensagem,
+        message: 'Mensagem enviada com sucesso',
+      });
+    } catch (error: any) {
+      console.error('❌ Erro no controller enviarMensagem:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Erro ao enviar mensagem',
+        error: error.message,
       });
     }
   }
 }
-
-export const conversasController = new ConversasController();

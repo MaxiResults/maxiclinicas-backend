@@ -20,22 +20,22 @@ export const corsMiddleware = cors({
       return callback(null, true);
     }
 
-    // Permitir todos os domínios lovable.app e lovable.dev
+    // Permitir todos os domínios Lovable
     if (
       origin.includes('lovable.app') || 
-      origin.includes('lovable.dev')
-  origin.includes('lovableproject.com') 
+      origin.includes('lovable.dev') ||
+      origin.includes('lovableproject.com')
     ) {
       return callback(null, true);
     }
 
     // Verificar se origin está na lista permitida
     if (allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      console.warn(`⚠️ CORS blocked origin: ${origin}`);
-      callback(new Error('Not allowed by CORS'));
+      return callback(null, true);
     }
+    
+    console.warn(`⚠️ CORS blocked origin: ${origin}`);
+    callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
@@ -47,5 +47,5 @@ export const corsMiddleware = cors({
     'Origin',
   ],
   exposedHeaders: ['Content-Range', 'X-Content-Range'],
-  maxAge: 600, // 10 minutos
+  maxAge: 600,
 });

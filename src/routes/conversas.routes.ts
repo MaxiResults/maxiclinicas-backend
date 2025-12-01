@@ -1,24 +1,36 @@
 import { Router } from 'express';
-import { conversasController } from '../controllers/conversas.controller';
+import { ConversasController } from '../controllers/conversas.controller';
 
 const router = Router();
+const conversasController = new ConversasController();
 
 /**
- * POST /api/v1/conversas/sessao
- * Criar ou buscar sessão (N8N usa isso!)
+ * GET /conversas
+ * Listar sessões de conversa
+ * Query params: ?status=ativa&profissional_id=xxx
  */
-router.post('/sessao', conversasController.criarSessao.bind(conversasController));
+router.get(
+  '/',
+  (req, res) => conversasController.listarSessoes(req, res)
+);
 
 /**
- * POST /api/v1/conversas/mensagem
- * Salvar mensagem (N8N usa isso!)
+ * GET /conversas/:sessaoId/mensagens
+ * Listar mensagens de uma sessão
  */
-router.post('/mensagem', conversasController.salvarMensagem.bind(conversasController));
+router.get(
+  '/:sessaoId/mensagens',
+  (req, res) => conversasController.listarMensagens(req, res)
+);
 
 /**
- * GET /api/v1/conversas/:leadId/historico
- * Buscar histórico de mensagens
+ * POST /conversas/:sessaoId/mensagens
+ * Enviar mensagem para cliente
+ * Body: { texto: string }
  */
-router.get('/:leadId/historico', conversasController.buscarHistorico.bind(conversasController));
+router.post(
+  '/:sessaoId/mensagens',
+  (req, res) => conversasController.enviarMensagem(req, res)
+);
 
 export default router;
