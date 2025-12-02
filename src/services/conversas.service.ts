@@ -31,48 +31,62 @@ export class ConversasService {
   /**
    * Listar sessões de conversa
    */
-  async listarSessoes(filters: {
-    status?: string;
-    profissional_id?: string;
-    cliente_id: number;
-    empresa_id: number;
-  }): Promise<Sessao[]> {
-    try {
-      let query = supabase
-        .from('Conversas_Sessoes')
-        .select(`
-          *,
-          ultima_mensagem:Conversas_Historico(mensagem, data_envio)
-        `)
-        .eq('Cliente_ID', filters.cliente_id)
-        .eq('Empresa_ID', filters.empresa_id)
-        .order('ultima_interacao', { ascending: false })
-        .limit(1, { foreignTable: 'Conversas_Historico' });
+async listarSessoes(filters: {
+  status?: string;
+  profissional_id?: string;
+  cliente_id: number;
+  empresa_id: number;
+}): Promise<any[]> {
+  try {
+    // 1. Buscar sessões
+    let query = supabase
+      .from('Conversas_Sessoes')
+      .select('*')
+      .eq('Cliente_ID', filters.cliente_id)
+      .eq('Empresa_ID', filters.empresa_id)
+      .order('ultima_interacao', { ascending: false });
 
-      // Filtros opcionais
-      if (filters.status) {
-        query = query.eq('status_sessao', filters.status);
-      }
-
-      if (filters.profissional_id) {
-        query = query.eq('profissional_responsavel_id', filters.profissional_id);
-      }
-
-      const { data, error } = await query;
-
-      if (error) {
-        console.error('❌ Erro ao listar sessões:', error);
-        throw new Error(`Erro ao listar sessões: ${error.message}`);
-      }
-
-      console.log(`✅ ${data?.length || 0} sessões encontradas`);
-      return data || [];
-    } catch (error: any) {
-      console.error('❌ Erro no service listarSessoes:', error);
-      throw error;
+    // Filtros opcionais
+    if (filters.status) {
+      query = query.eq('status_sessao', filters.status);
     }
-  }
 
+    if (filters.profissional_id) {
+      query = query.eq('profissional_responsavel_id', filters.profissional_id);
+    }
+
+    const { data: sessoes, error: sessoesError } = await query;
+
+    if (sessoesError) {
+      console.error('❌ Erro ao listar sessões:', sessoesError);
+      throw new Error(`Erro ao listar sessões: ${sessoesError.message}`);
+    }
+
+    // 2. Para cada sessão, buscar última mensagem
+    const sessoesComMensagem = await Promise.all(
+      (sessoes || []).map(async (sessao) => {
+        const { data: ultimaMensagem } = await supabase
+          .from('Conversas_Historico')
+          .select('mensagem, data_envio, tipo_mensagem')
+          .eq('sessao_id', sessao.id)
+          .order('data_envio', { ascending: false })
+          .limit(1)
+          .single();
+
+        return {
+          ...sessao,
+          ultima_mensagem: ultimaMensagem || null,
+        };
+      })
+    );
+
+    console.log(`✅ ${sessoesComMensagem.length} sessões encontradas`);
+    return sessoesComMensagem;
+  } catch (error: any) {
+    console.error('❌ Erro no service listarSessoes:', error);
+    throw error;
+  }
+}
   /**
    * Listar mensagens de uma sessão
    */
