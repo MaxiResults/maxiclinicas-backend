@@ -151,4 +151,111 @@ export class ConversasController {
       });
     }
   }
+/**
+   * GET /conversas-leads
+   * Listar leads que têm conversas
+   */
+  async listarLeadsComConversas(req: Request, res: Response) {
+    try {
+      const { status, profissional_id } = req.query;
+
+      console.log('📋 Listando leads com conversas...');
+      console.log('Filtros:', { status, profissional_id });
+
+      const leads = await conversasService.listarLeadsComConversas({
+        status: status as string,
+        profissional_id: profissional_id as string,
+        cliente_id: DEFAULT_CLIENTE_ID,
+        empresa_id: DEFAULT_EMPRESA_ID,
+      });
+
+      return res.json({
+        success: true,
+        data: leads,
+        total: leads.length,
+      });
+    } catch (error: any) {
+      console.error('❌ Erro no controller listarLeadsComConversas:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Erro ao listar leads com conversas',
+        error: error.message,
+      });
+    }
+  }
+
+  /**
+   * GET /conversas-leads/:leadId/mensagens
+   * Listar todas mensagens de um lead
+   */
+  async listarMensagensPorLead(req: Request, res: Response) {
+    try {
+      const { leadId } = req.params;
+
+      console.log('💬 Listando mensagens do lead:', leadId);
+
+      const mensagens = await conversasService.listarMensagensPorLead(
+        leadId,
+        DEFAULT_CLIENTE_ID,
+        DEFAULT_EMPRESA_ID
+      );
+
+      return res.json({
+        success: true,
+        data: mensagens,
+        total: mensagens.length,
+      });
+    } catch (error: any) {
+      console.error('❌ Erro no controller listarMensagensPorLead:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Erro ao listar mensagens do lead',
+        error: error.message,
+      });
+    }
+  }
+
+  /**
+   * POST /conversas-leads/:leadId/mensagens
+   * Enviar mensagem para um lead
+   */
+  async enviarMensagemPorLead(req: Request, res: Response) {
+    try {
+      const { leadId } = req.params;
+      const { texto } = req.body;
+
+      console.log('📤 Enviando mensagem para lead...');
+      console.log('Lead:', leadId);
+      console.log('Texto:', texto);
+
+      // Validações
+      if (!texto || texto.trim() === '') {
+        return res.status(400).json({
+          success: false,
+          message: 'Texto da mensagem é obrigatório',
+        });
+      }
+
+      // Enviar mensagem
+      const mensagem = await conversasService.enviarMensagemPorLead(
+        leadId,
+        texto,
+        DEFAULT_CLIENTE_ID,
+        DEFAULT_EMPRESA_ID
+      );
+
+      return res.json({
+        success: true,
+        data: mensagem,
+        message: 'Mensagem enviada com sucesso',
+      });
+    } catch (error: any) {
+      console.error('❌ Erro no controller enviarMensagemPorLead:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Erro ao enviar mensagem para lead',
+        error: error.message,
+      });
+    }
+  }
 }
