@@ -138,7 +138,7 @@ export class ConversasService {
       console.log('📱 Para:', whatsappId);
       console.log('💬 Texto:', texto);
 
-     // ❌ ANTES (com Client-Token):
+      // ✅ DEPOIS (sem Client-Token):
       const response = await axios.post(
         `${ZAPI_URL}/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/send-text`,
         {
@@ -147,12 +147,11 @@ export class ConversasService {
         },
         {
           headers: {
-            'Client-Token': ZAPI_TOKEN,  // ← REMOVER ESTA LINHA!
             'Content-Type': 'application/json',
           },
         }
       );
-      
+
       console.log('✅ Z-API Response:', response.data);
 
       const messageId = response.data?.messageId || response.data?.id;
