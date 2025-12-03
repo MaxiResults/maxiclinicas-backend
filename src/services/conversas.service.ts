@@ -31,62 +31,60 @@ export class ConversasService {
   /**
    * Listar sessões de conversa
    */
-async listarSessoes(filters: {
-  status?: string;
-  profissional_id?: string;
-  cliente_id: number;
-  empresa_id: number;
-}): Promise<any[]> {
-  try {
-    // 1. Buscar sessões
-    let query = supabase
-      .from('Conversas_Sessoes')
-      .select('*')
-      .eq('Cliente_ID', filters.cliente_id)
-      .eq('Empresa_ID', filters.empresa_id)
-      .order('ultima_interacao', { ascending: false });
+  async listarSessoes(filters: {
+    status?: string;
+    profissional_id?: string;
+    cliente_id: number;
+    empresa_id: number;
+  }): Promise<any[]> {
+    try {
+      let query = supabase
+        .from('Conversas_Sessoes')
+        .select('*')
+        .eq('Cliente_ID', filters.cliente_id)
+        .eq('Empresa_ID', filters.empresa_id)
+        .order('ultima_interacao', { ascending: false });
 
-    // Filtros opcionais
-    if (filters.status) {
-      query = query.eq('status_sessao', filters.status);
+      if (filters.status) {
+        query = query.eq('status_sessao', filters.status);
+      }
+
+      if (filters.profissional_id) {
+        query = query.eq('profissional_responsavel_id', filters.profissional_id);
+      }
+
+      const { data: sessoes, error: sessoesError } = await query;
+
+      if (sessoesError) {
+        console.error('❌ Erro ao listar sessões:', sessoesError);
+        throw new Error(`Erro ao listar sessões: ${sessoesError.message}`);
+      }
+
+      const sessoesComMensagem = await Promise.all(
+        (sessoes || []).map(async (sessao) => {
+          const { data: ultimaMensagem } = await supabase
+            .from('Conversas_Historico')
+            .select('mensagem, data_envio, tipo_mensagem')
+            .eq('sessao_id', sessao.id)
+            .order('data_envio', { ascending: false })
+            .limit(1)
+            .single();
+
+          return {
+            ...sessao,
+            ultima_mensagem: ultimaMensagem || null,
+          };
+        })
+      );
+
+      console.log(`✅ ${sessoesComMensagem.length} sessões encontradas`);
+      return sessoesComMensagem;
+    } catch (error: any) {
+      console.error('❌ Erro no service listarSessoes:', error);
+      throw error;
     }
-
-    if (filters.profissional_id) {
-      query = query.eq('profissional_responsavel_id', filters.profissional_id);
-    }
-
-    const { data: sessoes, error: sessoesError } = await query;
-
-    if (sessoesError) {
-      console.error('❌ Erro ao listar sessões:', sessoesError);
-      throw new Error(`Erro ao listar sessões: ${sessoesError.message}`);
-    }
-
-    // 2. Para cada sessão, buscar última mensagem
-    const sessoesComMensagem = await Promise.all(
-      (sessoes || []).map(async (sessao) => {
-        const { data: ultimaMensagem } = await supabase
-          .from('Conversas_Historico')
-          .select('mensagem, data_envio, tipo_mensagem')
-          .eq('sessao_id', sessao.id)
-          .order('data_envio', { ascending: false })
-          .limit(1)
-          .single();
-
-        return {
-          ...sessao,
-          ultima_mensagem: ultimaMensagem || null,
-        };
-      })
-    );
-
-    console.log(`✅ ${sessoesComMensagem.length} sessões encontradas`);
-    return sessoesComMensagem;
-  } catch (error: any) {
-    console.error('❌ Erro no service listarSessoes:', error);
-    throw error;
   }
-}
+
   /**
    * Listar mensagens de uma sessão
    */
@@ -140,7 +138,6 @@ async listarSessoes(filters: {
       console.log('📱 Para:', whatsappId);
       console.log('💬 Texto:', texto);
 
-      // Enviar via Z-API
       const response = await axios.post(
         `${ZAPI_URL}/instances/${ZAPI_INSTANCE}/send-text`,
         {
@@ -159,7 +156,6 @@ async listarSessoes(filters: {
 
       const messageId = response.data?.messageId || response.data?.id;
 
-      // Salvar no banco
       const { data, error } = await supabase
         .from('Conversas_Historico')
         .insert({
@@ -181,7 +177,6 @@ async listarSessoes(filters: {
         throw new Error(`Erro ao salvar mensagem: ${error.message}`);
       }
 
-      // Atualizar sessão
       await supabase
         .from('Conversas_Sessoes')
         .update({
@@ -194,7 +189,6 @@ async listarSessoes(filters: {
     } catch (error: any) {
       console.error('❌ Erro ao enviar mensagem:', error);
       
-      // Salvar erro no banco
       await supabase.from('Conversas_Historico').insert({
         sessao_id: sessaoId,
         Cliente_ID: clienteId,
@@ -239,7 +233,8 @@ async listarSessoes(filters: {
       return null;
     }
   }
-/**
+
+  /**
    * Listar leads que têm conversas
    */
   async listarLeadsComConversas(filters: {
@@ -251,19 +246,20 @@ async listarSessoes(filters: {
     try {
       console.log('📋 Listando leads com conversas...');
 
-      // Buscar leads que têm pelo menos uma sessão
       let query = supabase
-        .from('Leads')
+        .from('Leads_Cadastro')
         .select(`
           id,
           nome,
           telefone,
-          whatsapp,
+          whatsapp_id,
+          whatsapp_nome,
           status,
-          origem,
+          canal_origem,
+          primeira_mensagem_at,
           created_at
         `)
-        .eq('cliente_id', filters.cliente_id)
+        .eq('Cliente_ID', filters.cliente_id)
         .eq('Empresa_ID', filters.empresa_id);
 
       const { data: leads, error: leadsError } = await query;
@@ -278,10 +274,8 @@ async listarSessoes(filters: {
         return [];
       }
 
-      // Para cada lead, buscar sessão ativa e última mensagem
       const leadsComConversas = await Promise.all(
         leads.map(async (lead) => {
-          // Buscar sessão ativa
           const { data: sessaoAtiva } = await supabase
             .from('Conversas_Sessoes')
             .select('id, status_sessao, ultima_interacao, total_mensagens')
@@ -293,49 +287,47 @@ async listarSessoes(filters: {
             .limit(1)
             .single();
 
-          // Buscar última mensagem de qualquer sessão
+          const { data: sessoes } = await supabase
+            .from('Conversas_Sessoes')
+            .select('id')
+            .eq('lead_id', lead.id)
+            .eq('Cliente_ID', filters.cliente_id)
+            .eq('Empresa_ID', filters.empresa_id);
+
+          if (!sessoes || sessoes.length === 0) {
+            return null;
+          }
+
+          const sessoesIds = sessoes.map(s => s.id);
+
           const { data: ultimaMensagem } = await supabase
             .from('Conversas_Historico')
             .select('mensagem, data_envio, tipo_mensagem')
-            .in('sessao_id', 
-              supabase
-                .from('Conversas_Sessoes')
-                .select('id')
-                .eq('lead_id', lead.id)
-            )
+            .in('sessao_id', sessoesIds)
             .order('data_envio', { ascending: false })
             .limit(1)
             .single();
 
-          // Contar total de mensagens
           const { count: totalMensagens } = await supabase
             .from('Conversas_Historico')
             .select('id', { count: 'exact', head: true })
-            .in('sessao_id',
-              supabase
-                .from('Conversas_Sessoes')
-                .select('id')
-                .eq('lead_id', lead.id)
-            );
-
-          // Verificar se lead tem conversas
-          const temConversas = totalMensagens && totalMensagens > 0;
-
-          if (!temConversas) {
-            return null; // Filtrar leads sem conversas
-          }
+            .in('sessao_id', sessoesIds);
 
           return {
-            ...lead,
+            id: lead.id,
+            nome: lead.nome || lead.whatsapp_nome || lead.whatsapp_id,
+            telefone: lead.telefone,
+            whatsapp_id: lead.whatsapp_id,
+            status: lead.status,
+            canal_origem: lead.canal_origem,
             sessao_ativa: sessaoAtiva || null,
             ultima_mensagem: ultimaMensagem || null,
             total_mensagens: totalMensagens || 0,
-            ultima_interacao: sessaoAtiva?.ultima_interacao || lead.created_at,
+            ultima_interacao: sessaoAtiva?.ultima_interacao || lead.primeira_mensagem_at || lead.created_at,
           };
         })
       );
 
-      // Filtrar nulls e ordenar por última interação
       const resultado = leadsComConversas
         .filter(lead => lead !== null)
         .sort((a, b) => {
@@ -363,7 +355,6 @@ async listarSessoes(filters: {
     try {
       console.log('💬 Listando mensagens do lead:', leadId);
 
-      // Buscar todas as sessões do lead
       const { data: sessoes, error: sessoesError } = await supabase
         .from('Conversas_Sessoes')
         .select('id')
@@ -383,7 +374,6 @@ async listarSessoes(filters: {
 
       const sessoesIds = sessoes.map(s => s.id);
 
-      // Buscar mensagens de todas as sessões
       const { data: mensagens, error: mensagensError } = await supabase
         .from('Conversas_Historico')
         .select('*')
@@ -415,7 +405,6 @@ async listarSessoes(filters: {
     try {
       console.log('🔍 Buscando sessão ativa do lead:', leadId);
 
-      // Buscar sessão ativa (últimas 24h)
       const { data: sessaoAtiva, error: buscaError } = await supabase
         .from('Conversas_Sessoes')
         .select('id, ultima_interacao')
@@ -435,7 +424,6 @@ async listarSessoes(filters: {
 
       console.log('⚠️ Nenhuma sessão ativa, criando nova...');
 
-      // Encerrar sessões antigas se existirem
       await supabase
         .from('Conversas_Sessoes')
         .update({
@@ -448,7 +436,6 @@ async listarSessoes(filters: {
         .eq('Empresa_ID', empresaId)
         .eq('status_sessao', 'ativa');
 
-      // Criar nova sessão
       const { data: novaSessao, error: criacaoError } = await supabase
         .from('Conversas_Sessoes')
         .insert({
@@ -491,12 +478,11 @@ async listarSessoes(filters: {
     try {
       console.log('📤 Enviando mensagem para lead:', leadId);
 
-      // Buscar lead
       const { data: lead, error: leadError } = await supabase
-        .from('Leads')
-        .select('id, nome, telefone, whatsapp')
+        .from('Leads_Cadastro')
+        .select('id, nome, telefone, whatsapp_id')
         .eq('id', leadId)
-        .eq('cliente_id', clienteId)
+        .eq('Cliente_ID', clienteId)
         .eq('Empresa_ID', empresaId)
         .single();
 
@@ -504,13 +490,12 @@ async listarSessoes(filters: {
         throw new Error('Lead não encontrado');
       }
 
-      const whatsappId = lead.whatsapp || lead.telefone;
+      const whatsappId = lead.whatsapp_id || lead.telefone;
 
       if (!whatsappId) {
         throw new Error('Lead não possui WhatsApp configurado');
       }
 
-      // Buscar ou criar sessão ativa
       const sessaoId = await this.buscarOuCriarSessaoAtiva(
         leadId,
         whatsappId,
@@ -518,7 +503,6 @@ async listarSessoes(filters: {
         empresaId
       );
 
-      // Enviar mensagem via Z-API
       const mensagem = await this.enviarMensagem(
         sessaoId,
         whatsappId,
