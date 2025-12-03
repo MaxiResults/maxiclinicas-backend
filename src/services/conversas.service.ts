@@ -139,7 +139,7 @@ export class ConversasService {
       console.log('💬 Texto:', texto);
 
       const response = await axios.post(
-        `${ZAPI_URL}/instances/${ZAPI_INSTANCE}/send-text`,
+        `${ZAPI_URL}/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/send-text`,
         {
           phone: whatsappId,
           message: texto,
