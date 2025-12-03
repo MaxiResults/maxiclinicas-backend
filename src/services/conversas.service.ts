@@ -129,8 +129,9 @@ export class ConversasService {
       const ZAPI_URL = process.env.ZAPI_URL;
       const ZAPI_TOKEN = process.env.ZAPI_TOKEN;
       const ZAPI_INSTANCE = process.env.ZAPI_INSTANCE_ID;
+      const ZAPI_CLIENT_TOKEN = process.env.ZAPI_CLIENT_TOKEN; // ✅ NOVO
 
-      if (!ZAPI_URL || !ZAPI_TOKEN || !ZAPI_INSTANCE) {
+      if (!ZAPI_URL || !ZAPI_TOKEN || !ZAPI_INSTANCE || !ZAPI_CLIENT_TOKEN) {
         throw new Error('Credenciais Z-API não configuradas');
       }
 
@@ -138,7 +139,6 @@ export class ConversasService {
       console.log('📱 Para:', whatsappId);
       console.log('💬 Texto:', texto);
 
-      // ✅ DEPOIS (sem Client-Token):
       const response = await axios.post(
         `${ZAPI_URL}/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/send-text`,
         {
@@ -147,6 +147,7 @@ export class ConversasService {
         },
         {
           headers: {
+            'Client-Token': ZAPI_CLIENT_TOKEN, // ✅ ADICIONAR ESTE
             'Content-Type': 'application/json',
           },
         }
@@ -198,7 +199,7 @@ export class ConversasService {
         mensagem: texto,
         data_envio: new Date().toISOString(),
         status_entrega: 'erro',
-        erro_descricao: error.message,
+        erro_descricao: error.response?.data?.error || error.message,
       });
 
       throw error;
