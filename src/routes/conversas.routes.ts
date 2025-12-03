@@ -38,27 +38,30 @@ router.post(
  * Listar leads que têm conversas
  * Query params: ?status=novo&profissional_id=xxx
  */
+/**
+ * GET /conversas/leads
+ * Listar leads que têm conversas
+ */
 router.get(
-  '-leads',
+  '/leads',
   (req, res) => conversasController.listarLeadsComConversas(req, res)
 );
 
 /**
- * GET /conversas-leads/:leadId/mensagens
- * Listar todas mensagens de um lead (de todas as sessões)
+ * GET /conversas/leads/:leadId/mensagens
+ * Listar todas mensagens de um lead
  */
 router.get(
-  '-leads/:leadId/mensagens',
+  '/leads/:leadId/mensagens',
   (req, res) => conversasController.listarMensagensPorLead(req, res)
 );
 
 /**
- * POST /conversas-leads/:leadId/mensagens
+ * POST /conversas/leads/:leadId/mensagens
  * Enviar mensagem para um lead
- * Body: { texto: string }
  */
 router.post(
-  '-leads/:leadId/mensagens',
+  '/leads/:leadId/mensagens',
   (req, res) => conversasController.enviarMensagemPorLead(req, res)
 );
 
