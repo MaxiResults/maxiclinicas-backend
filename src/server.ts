@@ -12,6 +12,7 @@ import { errorHandler } from './middlewares/errorHandler.middleware';
 import { corsMiddleware } from './middlewares/cors.middleware';
 
 // Importar rotas
+import authRoutes from './routes/auth.routes';
 import webhooksRoutes from './routes/webhooks.routes';
 import leadsRoutes from './routes/leads.routes';
 import agendamentosRoutes from './routes/agendamentos.routes';
@@ -53,6 +54,7 @@ app.get('/', (req, res) => {
     status: 'online',
     endpoints: {
       health: '/health',
+      auth: '/api/v1/auth',
       webhooks: '/api/v1/webhooks',
       leads: '/api/v1/leads',
       agendamentos: '/api/v1/agendamentos',
@@ -81,6 +83,7 @@ app.get('/health', async (req, res) => {
 });
 
 // Rotas da API
+app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/webhooks', webhooksRoutes);
 app.use('/api/v1/leads', leadsRoutes);
 app.use('/api/v1/agendamentos', agendamentosRoutes);
