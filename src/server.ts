@@ -116,6 +116,10 @@ app.listen(PORT, async () => {
   logger.info(`📍 Environment: ${process.env.NODE_ENV}`);
   logger.info('='.repeat(50));
   logger.info('📡 Endpoints disponíveis:');
+  logger.info(`   POST /api/v1/auth/login`);           // ← ADICIONAR
+  logger.info(`   POST /api/v1/auth/refresh`);         // ← ADICIONAR
+  logger.info(`   GET  /api/v1/auth/me`);              // ← ADICIONAR
+  logger.info(`   POST /api/v1/auth/logout`);          // ← ADICIONAR
   logger.info(`   POST /api/v1/webhooks/zapi`);
   logger.info(`   POST /api/v1/webhooks/n8n`);
   logger.info(`   GET  /api/v1/leads`);
