@@ -203,16 +203,21 @@ export async function logout(userId: string): Promise<void> {
 
 // ─── /auth/me ─────────────────────────────────────────────
 export async function getMe(userId: string): Promise<MeResponse> {
-  const { data: usuario } = await supabase
+  console.log('🔍 DEBUG getMe - userId recebido:', userId);
+  
+  const { data: usuario, error } = await supabase
     .from('usuarios')
     .select(`
       id, nome, email, role, avatar_url, cliente_id, empresa_id, profissional_id,
-      profissionais!inner ( funcao_id,
+      profissionais!fk_usuarios_profissional!left ( funcao_id,
         funcoes ( id, nome, permissoes, nivel_acesso )
       )
     `)
     .eq('id', userId)
     .single();
+
+  console.log('🔍 DEBUG getMe - data:', usuario);
+  console.log('🔍 DEBUG getMe - error:', error);
 
   if (!usuario) throw { status: 404, message: 'Usuário não encontrado' };
 
